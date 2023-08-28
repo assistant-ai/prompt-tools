@@ -12,19 +12,15 @@ import (
 
 type StringExtractor func() (string, error)
 
-// func GenerateFinalPrompt() (string, error) {
-// 	p := &PromptBuilder{}
-// 	prompt, err := p.
-// 		//InitTokenCounter(gptTokeCounter).
-// 		//SetMaxTokenCount(100).
-// 		CreateInitialPrompt("asdfdsafasdfasd").
-// 		StartOfAdditionalInformationSection().
-// 		AddFile("asdfdsa/asdf.txt").
-// 		AddFile("asdf").
-// 		AddURL("https://www.google.com").
-// 		EndOfAdditionalInformationSection().
-// 		GenerateFinalPrompt()
-// }
+func GenerateFinalPrompt() (string, error) {
+	return CreateInitialPrompt("can you read docs from the wiki and help to fix my test").
+		StartOfAdditionalInformationSection().
+		AddFile("project/main.go").
+		AddFile("main_test.go").
+		AddUrl("https://detailedwiki.com").
+		EndOfAdditionalInformationSection().
+		GenerateFinalPrompt()
+}
 
 func CreateEmptyPrompt(initialPrompt string) *PromptBuilder {
 	return CreateInitialPrompt("")
@@ -43,7 +39,19 @@ func (p *PromptBuilder) GenerateFinalPrompt() (string, error) {
 	return p.prompt, nil
 }
 
+func (p *PromptBuilder) AddTextToPrompt(text string) *PromptBuilder {
+	if p.err != nil {
+		return p
+	}
+	p.prompt = fmt.Sprintf("\n%s\n%s\n", p.prompt, text)
+	return p
+}
+
 func (p *PromptBuilder) AddFile(filePath string) *PromptBuilder {
+	if p.err != nil {
+		return p
+	}
+
 	templateStr := `
 {{ .OriginalPrompt }}
 File path: {{ .Path }}
