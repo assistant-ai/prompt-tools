@@ -8,7 +8,7 @@ import (
 	"github.com/assistant-ai/prompt-tools/prompttools"
 )
 
-var DEBUG = true
+var DEBUG = false
 
 var MAP_PROMPT = `User asked you to do the task with the big text so you have do it in steps, since text is too big.
 Current chanks of text is part of the bigger text, you have to extract TLDR of this text with the most importan information that you might need to acihve the final goal that users wants you to do.
