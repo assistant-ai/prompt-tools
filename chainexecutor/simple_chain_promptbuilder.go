@@ -8,8 +8,6 @@ import (
 	"github.com/assistant-ai/prompt-tools/prompttools"
 )
 
-var DEBUG = false
-
 var MAP_PROMPT = `User asked you to do the task with the big text so you have do it in steps, since text is too big.
 Current chanks of text is part of the bigger text, you have to extract TLDR of this text with the most importan information that you might need to acihve the final goal that users wants you to do.
 
@@ -38,6 +36,7 @@ type SimpleChainExecutor struct {
 	err        error
 	text       string
 	llmClient  *client.Client
+	debug      bool
 }
 
 func NewSimpleChainExecutor() *SimpleChainExecutor {
@@ -49,6 +48,14 @@ func (p *SimpleChainExecutor) Text(text string) *SimpleChainExecutor {
 		return p
 	}
 	p.text = text
+	return p
+}
+
+func (p *SimpleChainExecutor) EnableDebug() *SimpleChainExecutor {
+	if p.err != nil {
+		return p
+	}
+	p.debug = true
 	return p
 }
 
@@ -75,7 +82,7 @@ func (p *SimpleChainExecutor) Execute() (string, error) {
 	if p.text == "" {
 		return "", errors.New("text is empty")
 	}
-	chunks := splitStringIntoChunksOfSize(p.text, 6000)
+	chunks := splitStringIntoChunksOfSizeWithOverlap(p.text, 6000*3)
 	memory, err := p.executeMapReduce(chunks, 0, len(chunks)-1)
 	if err != nil {
 		return "", err
@@ -84,7 +91,7 @@ func (p *SimpleChainExecutor) Execute() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	debugShowTextAndWaitKeybordEnter("final reduced text: " + finalReducedText + "\n" + "final memory: " + memory)
+	p.debugShowTextAndWaitKeybordEnter("final reduced text: " + finalReducedText + "\n" + "final memory: " + memory)
 	return finalReducedText, nil
 }
 
@@ -94,7 +101,7 @@ func (p *SimpleChainExecutor) executeMapReduce(chunks []string, start int, end i
 		if err != nil {
 			return "", err
 		}
-		debugShowTextAndWaitKeybordEnter("original text: " + chunks[start] + "\nMapped: " + mappedChunk)
+		p.debugShowTextAndWaitKeybordEnter("original text: " + chunks[start] + "\nMapped: " + mappedChunk)
 		return mappedChunk, nil
 	}
 	middle := (start + end) / 2
@@ -110,7 +117,7 @@ func (p *SimpleChainExecutor) executeMapReduce(chunks []string, start int, end i
 	if err != nil {
 		return "", err
 	}
-	debugShowTextAndWaitKeybordEnter("left: " + left + "\nright: " + right + "\nreduced: " + reducedText)
+	p.debugShowTextAndWaitKeybordEnter("left: " + left + "\nright: " + right + "\nreduced: " + reducedText)
 	return reducedText, nil
 }
 
@@ -155,20 +162,29 @@ func (p *SimpleChainExecutor) finalReduce(memory string) (string, error) {
 	return p.llmClient.SendNoContextMessage(prompt)
 }
 
-func splitStringIntoChunksOfSize(text string, size int) []string {
+func splitStringIntoChunksOfSizeWithOverlap(text string, size int) []string {
 	var chunks []string
+	overlap := 100
 	for i := 0; i < len(text); i += size {
 		end := i + size
 		if end > len(text) {
 			end = len(text)
 		}
-		chunks = append(chunks, text[i:end])
+		startIndex := i
+		if startIndex-overlap > 0 {
+			startIndex -= overlap
+		}
+		endIndex := end
+		if endIndex+overlap < len(text) {
+			endIndex += overlap
+		}
+		chunks = append(chunks, text[startIndex:endIndex])
 	}
 	return chunks
 }
 
-func debugShowTextAndWaitKeybordEnter(text string) {
-	if DEBUG {
+func (p *SimpleChainExecutor) debugShowTextAndWaitKeybordEnter(text string) {
+	if p.debug {
 		println("=====================================")
 		println(text)
 		println("Press Enter to continue...")

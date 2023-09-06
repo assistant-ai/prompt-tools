@@ -82,6 +82,13 @@ Content:
 	}, templateStr, url)
 }
 
+func (p *PromptBuilder) AddSeparator() *PromptBuilder {
+	if p.err != nil {
+		return p
+	}
+	return p.AddTextToPrompt("========")
+}
+
 func (p *PromptBuilder) AddUrls(urls []string) *PromptBuilder {
 	if len(urls) == 0 {
 		return p

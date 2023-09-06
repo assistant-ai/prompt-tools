@@ -22,6 +22,7 @@ func TestSimpleChainExecutor(t *testing.T) {
 	executor := NewSimpleChainExecutor().
 		LlmClient(client).
 		Text(podcastTranscript).
+		EnableDebug().
 		TaskPromt("create podcast show notes from this that will be published to iTunes")
 
 	// Execute
