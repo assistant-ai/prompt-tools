@@ -47,6 +47,15 @@ func (p *PromptBuilder) AddTextToPrompt(text string) *PromptBuilder {
 	return p
 }
 
+func (p *PromptBuilder) AddTextToPromptf(text string, a ...any) *PromptBuilder {
+	if p.err != nil {
+		return p
+	}
+	toAdd := fmt.Sprintf(text, a)
+	p.prompt = fmt.Sprintf("\n%s\n%s\n", p.prompt, toAdd)
+	return p
+}
+
 func (p *PromptBuilder) AddFile(filePath string) *PromptBuilder {
 	if p.err != nil {
 		return p

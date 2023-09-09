@@ -1,6 +1,7 @@
 package chainexecutor
 
 import (
+	"fmt"
 	"io/ioutil"
 	"testing"
 
@@ -23,7 +24,7 @@ func TestSimpleChainExecutor(t *testing.T) {
 		LlmClient(client).
 		Text(podcastTranscript).
 		EnableDebug().
-		TaskPromt("create podcast show notes from this that will be published to iTunes")
+		TaskPromt("Generate podcast show notes from the provided transcript. The notes should be concise yet factual, summarizing key points discussed in the episode. These show notes will be published on iTunes. Avoid excessive use of buzzwords; the aim is to inform listeners rather than attract attention. For formatting and style, refer to the show notes of the podcast Radio-T as a guideline. Do not explicitly mention that the style is similar to Radio-T. Additionally, here's the Discord link for further discussion: https://discord.gg/T38WpgkHGQ. Please format the output in Markdown. Also in the beggining of your output list 3-4 suggested podcast title names.")
 
 	// Execute
 	result, err := executor.Execute()
@@ -35,4 +36,5 @@ func TestSimpleChainExecutor(t *testing.T) {
 	if result == "" {
 		t.Fatalf("Output is empty")
 	}
+	fmt.Println(result)
 }

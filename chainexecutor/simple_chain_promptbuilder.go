@@ -8,24 +8,23 @@ import (
 	"github.com/assistant-ai/prompt-tools/prompttools"
 )
 
-var MAP_PROMPT = `User asked you to do the task with the big text so you have do it in steps, since text is too big.
-Current chanks of text is part of the bigger text, you have to extract TLDR of this text with the most importan information that you might need to acihve the final goal that users wants you to do.
+var MAP_PROMPT = `User has provided a large text and requested you to process it in steps. The current chunk of text is part of a larger body of text. Extract a TL;DR summary containing the most important information needed to achieve the user's final goal.
 
-Your output should strictly be:
-* no longer than 3000 words
-* include all the important details that you learned from the user's input that might be needed to achive the goal
+Your output must:
+* Be no longer than 3000 words
+* Include all crucial details learned from the user's input that may be necessary for achieving the goal
 
-Do not add any explanation text, or anything, you output should be strictly text with learning, later it will be give back to you as as to achive final task (but not now).`
+Do not include any explanatory text. Your output should strictly contain the learned information, which will later be used to accomplish the final task.`
 
-var REDUCE_PROMPT = `You are working in scope of the Map/Reduce algorithm. Currently there is a reduce step in progerss that you have tod.
+var REDUCE_PROMPT = `You are operating within the framework of the Map/Reduce algorithm. You are currently in the reduce step.
 
-Below you given two texts snippets and user task. Each snippet includes important information that might be needed to achive user goal. You crrent task is to generate new text snippet that:
-* includes all the important information from both snippets
-* no longer than 3000 words
+You are given two text snippets and a user task. Each snippet contains important information that may be needed to achieve the user's goal. Your current task is to generate a new text snippet that:
+* Includes all the important information from both snippets
+* Is no longer than 3000 words
 
-Keep in mind that you do not have to actually do user's final task yet, your goal is just to merge two snippets so lataer on final task can be achived. Please provide output as text snippet, no coments or explanation should be added.`
+Remember, you do not have to complete the user's final task at this point. Your goal is to merge the two snippets so that the final task can be achieved later. Provide the output as a text snippet without any comments or explanations.`
 
-var FINAL_PROMPT = `User gave you a big text that you already have analyzed and reduced to a resonably small snippet of text. It should include all the important information you need to achive the task. Below you will find text and user task. Your output SHOULD be result of user task.`
+var FINAL_PROMPT = `The user has provided a large text that you have already analyzed and reduced to a reasonably small snippet. This snippet should contain all the important information needed to achieve the task. Below, you will find the text and the user's task. Your output SHOULD be the result of completing the user's task.`
 
 type Provider interface {
 	Provide() (string, error)
@@ -83,48 +82,92 @@ func (p *SimpleChainExecutor) Execute() (string, error) {
 		return "", errors.New("text is empty")
 	}
 	chunks := splitStringIntoChunksOfSizeWithOverlap(p.text, 6000*3)
-	memory, err := p.executeMapReduce(chunks, 0, len(chunks)-1)
+
+	resultChan := make(chan string)
+	errChan := make(chan error, 1)
+	go p.executeMapReduce(chunks, 0, len(chunks)-1, resultChan, errChan)
+
+	var result string
+	var err error
+
+	select {
+	case result = <-resultChan:
+	case err = <-errChan:
+	}
+
 	if err != nil {
 		return "", err
 	}
-	finalReducedText, err := p.finalReduce(memory)
+
+	finalReducedText, err := p.finalReduce(result)
 	if err != nil {
 		return "", err
 	}
-	p.debugShowTextAndWaitKeybordEnter("final reduced text: " + finalReducedText + "\n" + "final memory: " + memory)
+	p.debugShowTextAndWaitKeybordEnter("final reduced text: " + finalReducedText + "\n" + "final memory: " + result)
 	return finalReducedText, nil
 }
 
-func (p *SimpleChainExecutor) executeMapReduce(chunks []string, start int, end int) (string, error) {
+func (p *SimpleChainExecutor) executeMapReduce(chunks []string, start int, end int, resultChan chan string, errChan chan error) {
 	if start == end {
-		mappedChunk, err := p.mapChunk(chunks[start])
+		mappedChunk, err := p.mapChunk(chunks[start], start, len(chunks))
 		if err != nil {
-			return "", err
+			errChan <- err
+			return
 		}
 		p.debugShowTextAndWaitKeybordEnter("original text: " + chunks[start] + "\nMapped: " + mappedChunk)
-		return mappedChunk, nil
+		resultChan <- mappedChunk
+		return
 	}
+
 	middle := (start + end) / 2
-	left, err := p.executeMapReduce(chunks, start, middle)
-	if err != nil {
-		return "", err
+	leftChan := make(chan string)
+	rightChan := make(chan string)
+	leftErrChan := make(chan error, 1)
+	rightErrChan := make(chan error, 1)
+
+	go p.executeMapReduce(chunks, start, middle, leftChan, leftErrChan)
+	go p.executeMapReduce(chunks, middle+1, end, rightChan, rightErrChan)
+
+	var leftResult string
+	var leftErr error
+
+	select {
+	case leftResult = <-leftChan:
+	case leftErr = <-leftErrChan:
 	}
-	right, err := p.executeMapReduce(chunks, middle+1, end)
-	if err != nil {
-		return "", err
+
+	if leftErr != nil {
+		errChan <- leftErr
+		return
 	}
-	reducedText, err := p.reduce(left, right)
-	if err != nil {
-		return "", err
+
+	var rightResult string
+	var rightErr error
+
+	select {
+	case rightResult = <-rightChan:
+	case rightErr = <-rightErrChan:
 	}
-	p.debugShowTextAndWaitKeybordEnter("left: " + left + "\nright: " + right + "\nreduced: " + reducedText)
-	return reducedText, nil
+
+	if rightErr != nil {
+		errChan <- rightErr
+		return
+	}
+
+	reducedText, err := p.reduce(leftResult, rightResult)
+	if err != nil {
+		errChan <- err
+		return
+	}
+	p.debugShowTextAndWaitKeybordEnter("left: " + leftResult + "\nright: " + rightResult + "\nreduced: " + reducedText)
+	resultChan <- reducedText
 }
 
-func (p *SimpleChainExecutor) mapChunk(chunk string) (string, error) {
+func (p *SimpleChainExecutor) mapChunk(chunk string, chunkNumber int, totalNumbersOfChunks int) (string, error) {
 	prompt, err := prompttools.CreateInitialPrompt(MAP_PROMPT).
-		AddTextToPrompt("\nUser task: " + p.taskPrompt + "\n").
+		AddTextToPrompt("\nUser task: "+p.taskPrompt+"\n").
 		StartOfAdditionalInformationSection().
+		AddTextToPromptf("Chunk of user text number %d, ouf of %d:", chunkNumber, totalNumbersOfChunks).
 		AddTextToPrompt(chunk).
 		EndOfAdditionalInformationSection().
 		GenerateFinalPrompt()
@@ -138,9 +181,9 @@ func (p *SimpleChainExecutor) reduce(left string, right string) (string, error) 
 	prompt, err := prompttools.CreateInitialPrompt(REDUCE_PROMPT).
 		AddTextToPrompt("\nUser task: " + p.taskPrompt + "\n").
 		StartOfAdditionalInformationSection().
-		AddTextToPrompt("left text to reduce: " + left).
+		AddTextToPrompt("left text chunk to reduce: " + left).
 		AddTextToPrompt("========").
-		AddTextToPrompt("right text to reduce: " + right).
+		AddTextToPrompt("right text chunk to reduce: " + right).
 		EndOfAdditionalInformationSection().
 		GenerateFinalPrompt()
 	if err != nil {
@@ -164,7 +207,7 @@ func (p *SimpleChainExecutor) finalReduce(memory string) (string, error) {
 
 func splitStringIntoChunksOfSizeWithOverlap(text string, size int) []string {
 	var chunks []string
-	overlap := 100
+	overlap := 300
 	for i := 0; i < len(text); i += size {
 		end := i + size
 		if end > len(text) {
